@@ -1,16 +1,17 @@
 # India Female Population Projections 1991–2100
 
-Annual female population time series for **India and all 37 States/UTs**, spanning 1991–2100, broken into 16 NDMC age bands. Built from Census anchor years, NDMC state-level projections, and WPP-calibrated long-run projections.
+Annual female population time series for **India and all 37 States/UTs**, spanning 1991–2100,
+broken into 16 age bands. Built from Census anchor years, NCDIR state-level projections,
+and WPP-calibrated long-run projections.
 
 ---
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/<your-username>/india-female-pop-projections.git
-cd india-female-pop-projections
+git clone https://github.com/s-arvinth/-india-female-pop-projections.git
+cd -india-female-pop-projections
 pip install -r requirements.txt
-python notebooks/generate_notebook.py      # regenerates the .ipynb
 jupyter notebook notebooks/India_Female_Population_1991_2100.ipynb
 # Run All Cells — output Excel files appear in output/
 ```
@@ -23,129 +24,151 @@ jupyter notebook notebooks/India_Female_Population_1991_2100.ipynb
 india-female-pop-projections/
 ├── data/
 │   ├── wpp/
-│   │   └── India_Population_TimeSeries_Female.csv   # UN WPP 2022 single-year data
+│   │   └── India_Population_TimeSeries_Female.csv
+│   │       # UN World Population Prospects 2024 — India female population
+│   │       # for every single age (0,1,2,...,100+) and every year 1950–2100.
+│   │       # Used for: (1) WPP-scaled long-run growth ratios post-2036,
+│   │       # (2) within-band splitting for non-standard age boundaries.
 │   ├── census/
-│   │   └── Census_Master_AgeSex_1991_2001_2011.xlsx # Census 1991/2001/2011 age-sex tables
-│   └── ndmc/
-│       └── Statewise Population-NDMC.xlsx           # NDMC state-level 5-year projections 2012–2036
+│   │   └── Census_Master_AgeSex_1991_2001_2011.xlsx
+│   │       # Census of India age-sex tables for all states — 1991, 2001, 2011.
+│   └── ncdir/
+│       └── State_Female_Projections_2012_2036.xlsx
+│           # State-wise female population by 16 age bands, 5-year steps 2012–2036.
+│           # Produced by NCDIR using the Census Cohort Component Method
+│           # (Census 2011 base year, SRS fertility, Coale-Demeny West life tables).
 ├── notebooks/
-│   ├── generate_notebook.py                         # script to (re)generate the .ipynb
-│   └── India_Female_Population_1991_2100.ipynb      # main analysis notebook
-├── output/                                          # created by notebook at runtime
+│   ├── generate_notebook.py          # regenerates the .ipynb from source
+│   └── India_Female_Population_1991_2100.ipynb
+├── output/                           # created by notebook at runtime
 │   ├── India_Female_AgeBands_1991_2100.xlsx
 │   ├── Combined_All_States_1991_2100.xlsx
-│   └── States/
-│       └── <State>.xlsx  (37 files)
+│   ├── Custom_AgeBands_India.xlsx
+│   ├── Custom_AgeBands_All_States.xlsx
+│   └── States/<State>.xlsx  (37 files)
 ├── requirements.txt
 └── README.md
 ```
 
 ---
 
-## Methodology A — Three-Segment Pipeline
+## Methodology — Three-Segment Pipeline
 
 ### Segment 1: Census Anchor Years + Linear Interpolation (1991–2011)
 
-Census 1991, 2001, and 2011 provide decadal female population by 5-year age group. Between census years, each age band is linearly interpolated year-by-year:
+Census 1991, 2001, and 2011 provide decadal female population by 5-year age group.
+Between census years, each band is linearly interpolated year-by-year:
 
 $$P(\text{band},\, t) = P(\text{band},\, t_0) + \frac{t - t_0}{t_1 - t_0}\bigl[P(\text{band},\, t_1) - P(\text{band},\, t_0)\bigr]$$
 
-Census age bands (`0-4`, `5-9`, …, `75-79`, `80+`) are mapped to NDMC bands, with `75-79` and `80+` merged into `75+`.
+The census `15-19` band is split into `15-17` and `18-19` using WPP single-age proportions.
+Census `65-69` and `70-74` are combined into the `65-74` band to match NCDIR.
 
-### Segment 2: NDMC Actual Projections (2012–2036)
+### Segment 2: NCDIR Projections (2012–2036)
 
-The NDMC (*National Commission on Population*) published state-level female population projections in 5-year steps (2012, 2017, 2022, 2027, 2032, 2036). These are linearly interpolated to annual values.
+State-level female population projections in 5-year steps from NCDIR, linearly
+interpolated to annual resolution.
 
-**Bifurcated states** — states created after 2000 lack their own 2001 Census data; the following split ratios are applied:
+**Bifurcated states** — states created after 1991 have no earlier census records;
+their populations are back-estimated using NCDIR 2012 split ratios applied to the
+parent state's census values:
 
-| New State | Parent State | Split Data Source |
-|-----------|-------------|------------------|
-| Jharkhand | Bihar | NDMC 2001 ratio |
-| Chhattisgarh | Madhya Pradesh | NDMC 2001 ratio |
-| Uttarakhand | Uttar Pradesh | NDMC 2001 ratio |
-| Telangana | Andhra Pradesh | NDMC 2012 ratio |
-| Ladakh | Jammu & Kashmir | NDMC 2012 ratio |
+| New State | Parent State | Split Ratio Source |
+|-----------|-------------|-------------------|
+| Jharkhand | Bihar | NCDIR 2012 |
+| Chhattisgarh | Madhya Pradesh | NCDIR 2012 |
+| Uttarakhand | Uttar Pradesh | NCDIR 2012 |
+| Telangana | Andhra Pradesh | NCDIR 2012 |
+| Ladakh | Jammu & Kashmir | NCDIR 2012 (1991 back-extrapolated) |
 
-### Segment 3: Long-Run Projections — Approach B (2037–2100)
+### Segment 3: WPP-Scaled Long-Run Projections (2037–2100)
 
-#### WPP Scaling Factor
+#### WPP Growth Ratio
 
 For each age band $x$ and year $t$:
 
 $$\rho(x,\, t) = \frac{P_{\text{WPP}}(x,\, t)}{P_{\text{WPP}}(x,\, 2036)}$$
 
-This captures how UN WPP 2022 projects each band's *relative* trajectory from the 2036 base.
+Captures how WPP projects each band's *relative* trajectory from the 2036 base.
 
 #### Gompertz TFR Curve
 
-Total Fertility Rate is modelled with a Gompertz decline:
-
 $$\text{TFR}(t) = L + (U - L)\cdot a^{\,b^{(t-2010)}}$$
 
-Parameters ($L=1.667$, $U=2.5$, $a$, $b$) are fitted to Census SRS / Sample Registration System data. TFR at 2036 provides the base:
+Parameters ($L=1.667$, $U=2.5$, $a$, $b$) are fitted to Census 2019 projected TFR values.
 
-$$\text{TFR}_{2036} = \text{TFR}(2036)$$
+#### WPP-Scaled Projection Formula
 
-#### Approach B Formula
-
-$$P_B(\text{band},\, t) = P_{\text{NDMC}}(\text{band},\, 2036)\;\times\;\rho(\text{band},\, t)\;\times\;\left(\frac{\text{TFR}(t)}{\text{TFR}_{2036}}\right)^{0.3}$$
-
-The exponent 0.3 dampens the fertility adjustment — most of the long-run dynamics are captured by the WPP scaling factor.
+$$P_{\text{proj}}(\text{band},\, t) = P_{\text{NCDIR}}(\text{band},\, 2036)\;\times\;\rho(\text{band},\, t)\;\times\;\left(\frac{\text{TFR}(t)}{\text{TFR}(2036)}\right)^{0.3}$$
 
 #### Blending Window (2037–2046)
 
-A 10-year linear blend transitions from NDMC momentum to Approach B, avoiding discontinuities at 2036:
+A 10-year linear blend transitions from NCDIR momentum to the WPP-scaled trajectory:
 
-$$\alpha(t) = \frac{t - 2036}{10}, \quad t \in [2037,\,2046]$$
+$$\alpha(t) = \frac{t - 2036}{10}, \quad P(t) = (1-\alpha)\,P_{\text{mom}}(t) + \alpha\,P_{\text{proj}}(t)$$
 
-$$P(\text{band},\, t) = (1-\alpha)\,P_{\text{mom}}(t) + \alpha\,P_B(\text{band},\, t)$$
+After 2046, a continuity correction ensures a smooth join:
 
-where $P_{\text{mom}}(t) = P(t-1)\cdot(1 + r_{\text{NDMC}})$ continues the NDMC growth rate.
-
-After 2046, the series scales to Approach B with a continuity correction:
-
-$$P(\text{band},\, t) = P_B(\text{band},\, t)\;\times\;\frac{P(2046)}{P_B(2046)}, \quad t > 2046$$
+$$P(t) = P_{\text{proj}}(t)\;\times\;\frac{P(2046)}{P_{\text{proj}}(2046)}, \quad t > 2046$$
 
 ---
 
 ## Age Bands
 
-All 16 NDMC age bands are produced:
+The 16 bands come directly from the NCDIR file:
 
-`00-04` · `05-09` · `10-14` · `15-17` · `18-19` · `20-24` · `25-29` · `30-34` · `35-39` · `40-44` · `45-49` · `50-54` · `55-59` · `60-64` · `65-74` · `75+`
+`00-04` · `05-09` · `10-14` · `15-17` · `18-19` · `20-24` · `25-29` · `30-34` ·
+`35-39` · `40-44` · `45-49` · `50-54` · `55-59` · `60-64` · `65-74` · `75+`
+
+Note that `15-17` (3 years), `18-19` (2 years), and `65-74` (10 years) are non-standard
+widths, reflecting how the NCDIR projections were published.
+
+---
+
+## Custom Age Bands
+
+The notebook includes a tool (Section 10) that lets you derive any age range from the
+16 native bands. You specify:
+
+```python
+USER_BANDS = [
+    ("18-29", 18, 29),    # spans 18-19, 20-24, 25-29 — composed directly
+    ("9-14",   9, 14),    # splits 05-09 at age 9 using WPP proportions
+    ("65+",   65, None),  # open-ended: 65-74 + 75+
+]
+```
+
+- **Exact boundaries**: bands summed directly.
+- **Non-standard boundaries** (e.g., age 9 within the `05-09` band): WPP single-age
+  data provides the within-band proportion, applied year-by-year.
+
+Output is saved to `output/Custom_AgeBands_India.xlsx` and
+`output/Custom_AgeBands_All_States.xlsx`.
 
 ---
 
 ## Data Sources
 
-| Dataset | Source | Years |
-|---------|--------|-------|
-| UN World Population Prospects 2022 | [UNDESA WPP](https://population.un.org/wpp/) | 1950–2100 |
-| Census of India (Age × Sex tables) | Office of the Registrar General, India | 1991, 2001, 2011 |
-| NDMC State-level Projections | National Commission on Population, MoHFW | 2012–2036 |
-| SRS Statistical Report 2022 | Office of the Registrar General, India | TFR/ASFR inputs |
+| Dataset | Source | Coverage |
+|---------|--------|----------|
+| UN World Population Prospects 2024 | UNDESA | India female, single age 0–100+, 1950–2100 |
+| Census of India (Age × Sex tables) | Office of the Registrar General, India | All states, 1991, 2001, 2011 |
+| State-level Female Projections | National Cancer Registry of India (NCDIR) | All states, 2012–2036 |
+| Population Projections Report 2019 | Census of India | TFR targets for Gompertz fitting |
+| SRS Statistical Report 2022 | Office of the Registrar General, India | Fertility and mortality inputs |
 
 ---
 
 ## Output Format
 
-Each Excel file (India + 37 state files + combined file) has columns:
+Each Excel file has columns:
 
-| Year | 00-04 | 05-09 | 10-14 | 15-17 | 18-19 | 20-24 | … | 75+ | Total |
-|------|-------|-------|-------|-------|-------|-------|---|-----|-------|
-| 1991 | … | … | … | … | … | … | … | … | … |
-| … | | | | | | | | | |
-| 2100 | … | … | … | … | … | … | … | … | … |
+| State | Year | 00-04 | 05-09 | … | 75+ | Total | Source |
+|-------|------|-------|-------|---|-----|-------|--------|
+| India | 1991 | … | … | … | … | … | Census-Interpolated |
+| … | … | | | | | | NCDIR-Actual / WPP-Projection |
 
-All values are **female population in thousands**.
-
----
-
-## Citation
-
-If you use this dataset or methodology, please cite:
-
-> Bhat, N. et al. (2026). *India Female Population Projections 1991–2100: Methodology A.* GitHub repository. https://github.com/<your-username>/india-female-pop-projections
+All population values are in **absolute persons** (not thousands or millions).
 
 ---
 
