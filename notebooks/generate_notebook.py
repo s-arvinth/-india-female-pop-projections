@@ -1049,6 +1049,118 @@ for yr in [2000, 2011, 2020, 2036, 2050, 2070, 2100]:
 """))
 
 # ─────────────────────────────────────────────────────────────────────────────
+# CELL 29 — Lambda function header
+# ─────────────────────────────────────────────────────────────────────────────
+cells.append(nbf.v4.new_markdown_cell(r"""\
+## Section 11: Lambda Function Generation for Epidemiological Models
+
+In compartmental disease models (e.g., S → I → C → Deaths for HPV/cervical cancer),
+the **force of infection** depends on the size of the age-specific susceptible pool.
+Here, $\lambda(t)$ is the population of a user-chosen age band at simulation year $t$
+(in thousands). It drives the transmission term in the ODE system.
+
+### Two options
+
+**Option 1 — Direct:**
+$$\lambda_{\text{direct}}(t) = P_{\text{band}}(t)$$
+Uses the population of the chosen band at the actual calendar year $t$.
+Straightforward and interpretable; relies on the projected values for $t > 2036$.
+
+**Option 2 — Shifted by $N$ years:**
+$$\lambda_{\text{shifted}}(t) = P_{\text{band}}(t + N)$$
+For simulation year $t$, uses the population value $N$ years ahead in calendar time.
+This is useful when running a simulation from before 2012 (the NCDIR data window):
+shifting by $N = 10$ means simulation year 2002 uses the 2012 population (reliable),
+simulation year 2003 uses 2013, and so on — avoiding dependence on back-extrapolated
+pre-2012 values entirely.
+
+### Configuration
+
+Edit the three variables below:
+```python
+LAMBDA_BAND  = "18-29"   # label from USER_BANDS (Section 10)
+N_SHIFT      = 10        # years to shift for Option 2
+LAMBDA_YEARS = range(2002, 2071)   # simulation time window
+```
+
+The outputs (`Lambda_Direct`, `Lambda_Shifted`) are exported as a CSV that can be
+loaded directly into any epidemiological model script.
+"""))
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CELL 30 — Lambda function code
+# ─────────────────────────────────────────────────────────────────────────────
+cells.append(nbf.v4.new_code_cell("""\
+# ── 11.1  User configuration ─────────────────────────────────────────────────
+LAMBDA_BAND  = "18-29"              # must be one of the labels in USER_BANDS
+N_SHIFT      = 10                   # years to shift for Option 2
+LAMBDA_YEARS = list(range(2002, 2071))  # simulation time window
+
+# ── 11.2  Validate band selection ────────────────────────────────────────────
+band_labels = [b[0] for b in USER_BANDS]
+if LAMBDA_BAND not in band_labels:
+    raise ValueError(
+        f"'{LAMBDA_BAND}' not found in USER_BANDS.\\n"
+        f"Available labels: {band_labels}\\n"
+        f"Update LAMBDA_BAND or add the band to USER_BANDS in Section 10."
+    )
+
+# ── 11.3  Build lookup: year -> population (thousands) ───────────────────────
+# df_custom_india was produced in Section 10 in absolute persons.
+lambda_lookup = dict(zip(
+    df_custom_india["Year"].astype(int),
+    df_custom_india[LAMBDA_BAND] / 1e3    # persons → thousands
+))
+
+# ── 11.4  Generate Option 1 (Direct) and Option 2 (Shifted) ──────────────────
+lambda_direct  = np.array([lambda_lookup.get(t,          np.nan) for t in LAMBDA_YEARS])
+lambda_shifted = np.array([lambda_lookup.get(t + N_SHIFT, np.nan) for t in LAMBDA_YEARS])
+
+n_missing_direct  = int(np.sum(np.isnan(lambda_direct)))
+n_missing_shifted = int(np.sum(np.isnan(lambda_shifted)))
+if n_missing_direct > 0:
+    print(f"WARNING: {n_missing_direct} years in LAMBDA_YEARS fall outside 1991-2100 "
+          f"(will be NaN in Option 1). Adjust LAMBDA_YEARS or LAMBDA_BAND.")
+if n_missing_shifted > 0:
+    print(f"WARNING: {n_missing_shifted} years in LAMBDA_YEARS + N_SHIFT fall outside "
+          f"1991-2100 (will be NaN in Option 2).")
+
+# ── 11.5  Assemble and export ─────────────────────────────────────────────────
+df_lambda = pd.DataFrame({
+    "Year":                        LAMBDA_YEARS,
+    "Lambda_Direct":               lambda_direct,
+    f"Lambda_Shifted_N{N_SHIFT}":  lambda_shifted,
+})
+lambda_out = os.path.join(OUT_DIR, f"Lambda_{LAMBDA_BAND.replace('-','_')}.csv")
+df_lambda.to_csv(lambda_out, index=False)
+print(f"Saved: {lambda_out}")
+print(f"\\nBand: {LAMBDA_BAND}  |  N_SHIFT = {N_SHIFT}  |  years {LAMBDA_YEARS[0]}–{LAMBDA_YEARS[-1]}")
+print(f"\\n  {'Year':>6}  {'Direct (k)':>12}  {'Shifted (k)':>12}")
+for _, row in df_lambda[df_lambda["Year"].isin([2002, 2005, 2010, 2012, 2020, 2036, 2050, 2070])].iterrows():
+    print(f"  {int(row['Year']):>6}  {row['Lambda_Direct']:>12,.1f}  "
+          f"  {row[f'Lambda_Shifted_N{N_SHIFT}']:>12,.1f}")
+
+# ── 11.6  Plot both options ───────────────────────────────────────────────────
+fig, ax = plt.subplots(figsize=(11, 4))
+ax.plot(LAMBDA_YEARS, lambda_direct,  color="#2E75B6", lw=2,
+        label=f"Option 1 — Direct:  $\\\\lambda(t) = P_{{{LAMBDA_BAND}}}(t)$")
+ax.plot(LAMBDA_YEARS, lambda_shifted, color="#C00000", lw=2, ls="--",
+        label=f"Option 2 — Shifted N={N_SHIFT}: $\\\\lambda(t) = P_{{{LAMBDA_BAND}}}(t+{N_SHIFT})$")
+ax.axvline(2012, color="gray", lw=0.8, ls=":", alpha=0.7, label="2012 (NCDIR data start)")
+ax.axvline(2036, color="gray", lw=0.8, ls="-.", alpha=0.5, label="2036 (projection start)")
+ax.set_title(f"Lambda Function — Band: {LAMBDA_BAND}", fontweight="bold")
+ax.set_xlabel("Simulation Year")
+ax.set_ylabel("Population (thousands)")
+ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v,_: f"{v:,.0f}k"))
+ax.legend(fontsize=8)
+plt.tight_layout()
+plt.show()
+
+print("\\nLambda arrays are ready for use in your epidemiological model.")
+print(f"Load via:  pd.read_csv('{lambda_out}')")
+"""))
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Assemble and write
 # ─────────────────────────────────────────────────────────────────────────────
 nb.cells = cells

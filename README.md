@@ -45,6 +45,7 @@ india-female-pop-projections/
 │   ├── Combined_All_States_1991_2100.xlsx
 │   ├── Custom_AgeBands_India.xlsx
 │   ├── Custom_AgeBands_All_States.xlsx
+│   ├── Lambda_<band>.csv             # lambda function for epidemiological models
 │   └── States/<State>.xlsx  (37 files)
 ├── requirements.txt
 └── README.md
@@ -169,6 +170,32 @@ Each Excel file has columns:
 | … | … | | | | | | NCDIR-Actual / WPP-Projection |
 
 All population values are in **absolute persons** (not thousands or millions).
+
+---
+
+## Lambda Function for Epidemiological Models (Section 11)
+
+In compartmental disease models (S → I → C → Deaths), transmission depends on the
+size of the age-specific susceptible pool. Section 11 generates $\lambda(t)$ — the
+population time series for any user-chosen age band — in two forms:
+
+**Option 1 — Direct:** $\lambda(t) = P_{\text{band}}(t)$
+Uses the projected population at the actual calendar year $t$.
+
+**Option 2 — Shifted by N years:** $\lambda(t) = P_{\text{band}}(t + N)$
+For simulation year $t$, uses the population $N$ years ahead in calendar time.
+This avoids dependence on back-extrapolated pre-2012 values: with $N = 10$,
+simulation year 2002 maps to the reliable 2012 NCDIR population, and so on.
+
+Configure in Section 11:
+```python
+LAMBDA_BAND  = "18-29"              # any label from USER_BANDS
+N_SHIFT      = 10                   # shift for Option 2
+LAMBDA_YEARS = list(range(2002, 2071))
+```
+
+Output: `output/Lambda_<band>.csv` with columns `Year`, `Lambda_Direct`,
+`Lambda_Shifted_N<shift>` (population in thousands).
 
 ---
 
