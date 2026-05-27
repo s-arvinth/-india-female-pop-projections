@@ -62,8 +62,8 @@ Between census years, each band is linearly interpolated year-by-year:
 
 $$P(\text{band},\, t) = P(\text{band},\, t_0) + \frac{t - t_0}{t_1 - t_0}\bigl[P(\text{band},\, t_1) - P(\text{band},\, t_0)\bigr]$$
 
-The census `15-19` band is split into `15-17` and `18-19` using WPP single-age proportions.
-Census `65-69` and `70-74` are combined into the `65-74` band to match NCDIR.
+Census bands map directly to the 16 NCDIR standard bands; only `75-79` and `80+`
+are combined into the NCDIR `75+` band.
 
 ### Segment 2: NCDIR Projections (2012–2036)
 
@@ -116,13 +116,10 @@ $$P(t) = P_{\text{proj}}(t)\;\times\;\frac{P(2046)}{P_{\text{proj}}(2046)}, \qua
 
 ## Age Bands
 
-The 16 bands come directly from the NCDIR file:
+The 16 standard five-year bands come directly from the NCDIR file:
 
-`00-04` · `05-09` · `10-14` · `15-17` · `18-19` · `20-24` · `25-29` · `30-34` ·
-`35-39` · `40-44` · `45-49` · `50-54` · `55-59` · `60-64` · `65-74` · `75+`
-
-Note that `15-17` (3 years), `18-19` (2 years), and `65-74` (10 years) are non-standard
-widths, reflecting how the NCDIR projections were published.
+`00-04` · `05-09` · `10-14` · `15-19` · `20-24` · `25-29` · `30-34` · `35-39` ·
+`40-44` · `45-49` · `50-54` · `55-59` · `60-64` · `65-69` · `70-74` · `75+`
 
 ---
 
@@ -133,9 +130,9 @@ The notebook includes a tool (Section 10) that lets you derive any age range fro
 
 ```python
 USER_BANDS = [
-    ("18-29", 18, 29),    # spans 18-19, 20-24, 25-29 — composed directly
-    ("9-14",   9, 14),    # splits 05-09 at age 9 using WPP proportions
-    ("65+",   65, None),  # open-ended: 65-74 + 75+
+    ("18-29", 18, 29),    # partial overlap: splits 15-19 at 18 using WPP proportions
+    ("9-14",   9, 14),    # partial overlap: splits 05-09 at 9 using WPP proportions
+    ("65+",   65, None),  # open-ended: 65-69 + 70-74 + 75+
 ]
 ```
 

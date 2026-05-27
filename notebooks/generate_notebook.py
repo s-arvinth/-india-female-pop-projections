@@ -75,11 +75,8 @@ cells.append(nbf.v4.new_markdown_cell(r"""\
 ## Mathematical Framework
 
 ### Age bands
-All projections use the 16 age bands from the NCDIR file:
-`00-04, 05-09, 10-14, 15-17, 18-19, 20-24, 25-29, 30-34, 35-39, 40-44, 45-49, 50-54, 55-59, 60-64, 65-74, 75+`
-
-Note that `15-17` (3 years), `18-19` (2 years), and `65-74` (10 years) are non-standard widths,
-reflecting the bands used in the NCDIR state-level projections.
+All projections use the 16 standard five-year age bands from the NCDIR file:
+`00-04, 05-09, 10-14, 15-19, 20-24, 25-29, 30-34, 35-39, 40-44, 45-49, 50-54, 55-59, 60-64, 65-69, 70-74, 75+`
 
 ---
 
@@ -91,8 +88,8 @@ year $y_k \in \{1991, 2001, 2011\}$. For any intermediate year $y \in [y_k, y_{k
 $$P(s, x, y) = C(s, x, y_k) + \frac{y - y_k}{y_{k+1} - y_k}
   \bigl[C(s, x, y_{k+1}) - C(s, x, y_k)\bigr]$$
 
-Census provides the `15-19` band as a single group. To split it into `15-17` and `18-19`,
-WPP single-age data is used: $\text{frac}_{18\text{-}19}(y) = \frac{\text{WPP}_{18}(y) + \text{WPP}_{19}(y)}{\sum_{a=15}^{19}\text{WPP}_a(y)}$
+Census uses the same standard 5-year bands as NCDIR, so mapping is direct.
+The bands `75-79` and `80+` in the Census file are combined into `75+`.
 
 ---
 
@@ -186,17 +183,18 @@ OUT_DIR    = os.path.join(REPO_ROOT, "output")
 STATES_DIR = os.path.join(OUT_DIR, "States")
 os.makedirs(STATES_DIR, exist_ok=True)
 
-# ── 16 NCDIR age bands (canonical names used throughout) ─────────────────────
-BANDS = ['00-04','05-09','10-14','15-17','18-19','20-24','25-29',
-         '30-34','35-39','40-44','45-49','50-54','55-59','60-64','65-74','75+']
+# ── 16 NCDIR age bands — standard 5-year bands as they appear in the file ─────
+BANDS = ['00-04','05-09','10-14','15-19','20-24','25-29',
+         '30-34','35-39','40-44','45-49','50-54','55-59',
+         '60-64','65-69','70-74','75+']
 
-# Age range covered by each band (used for custom band computation)
+# Age range covered by each band (used for custom band computation in Section 10)
 BAND_RANGES = {
     "00-04": (0,  4),   "05-09": (5,  9),   "10-14": (10, 14),
-    "15-17": (15, 17),  "18-19": (18, 19),  "20-24": (20, 24),
-    "25-29": (25, 29),  "30-34": (30, 34),  "35-39": (35, 39),
-    "40-44": (40, 44),  "45-49": (45, 49),  "50-54": (50, 54),
-    "55-59": (55, 59),  "60-64": (60, 64),  "65-74": (65, 74),
+    "15-19": (15, 19),  "20-24": (20, 24),  "25-29": (25, 29),
+    "30-34": (30, 34),  "35-39": (35, 39),  "40-44": (40, 44),
+    "45-49": (45, 49),  "50-54": (50, 54),  "55-59": (55, 59),
+    "60-64": (60, 64),  "65-69": (65, 69),  "70-74": (70, 74),
     "75+":   (75, 120),
 }
 
@@ -238,16 +236,16 @@ cells.append(nbf.v4.new_code_cell("""\
 wpp_raw = pd.read_csv(WPP_CSV).rename(columns={"Time": "Year"})
 wpp_raw = wpp_raw[wpp_raw["Year"].between(1991, 2100)].set_index("Year")
 
-# WPP→NCDIR band aggregation (matches the 16 NCDIR band definitions)
+# WPP→NCDIR band aggregation (standard 5-year bands matching the NCDIR file)
 BAND_AGES = {
     "00-04": range(0,  5),   "05-09": range(5, 10),
-    "10-14": range(10, 15),  "15-17": range(15, 18),
-    "18-19": range(18, 20),  "20-24": range(20, 25),
-    "25-29": range(25, 30),  "30-34": range(30, 35),
-    "35-39": range(35, 40),  "40-44": range(40, 45),
-    "45-49": range(45, 50),  "50-54": range(50, 55),
-    "55-59": range(55, 60),  "60-64": range(60, 65),
-    "65-74": range(65, 75),  "75+":   range(75, 101),
+    "10-14": range(10, 15),  "15-19": range(15, 20),
+    "20-24": range(20, 25),  "25-29": range(25, 30),
+    "30-34": range(30, 35),  "35-39": range(35, 40),
+    "40-44": range(40, 45),  "45-49": range(45, 50),
+    "50-54": range(50, 55),  "55-59": range(55, 60),
+    "60-64": range(60, 65),  "65-69": range(65, 70),
+    "70-74": range(70, 75),  "75+":   range(75, 101),
 }
 
 wpp_bands = pd.DataFrame(index=wpp_raw.index)
@@ -258,15 +256,6 @@ for band, ages in BAND_AGES.items():
 
 # Scaling factors relative to 2036 (ratio = 1.0 at 2036)
 wpp_sf = wpp_bands.div(wpp_bands.loc[2036])
-
-def wpp_split_1519(year):
-    \"\"\"Fraction of the 15-19 population that falls in ages 18-19, per WPP single-age data.\"\"\"
-    yr = min(max(int(year), 1991), 2100)
-    ages = [wpp_raw.loc[yr, f"Age{a}"] for a in range(15, 20)
-            if f"Age{a}" in wpp_raw.columns]
-    if not ages or sum(ages) == 0:
-        return 0.40   # fallback: ~40% of 15-19 are aged 18-19
-    return sum(ages[3:]) / sum(ages)
 
 print("WPP loaded:")
 print(f"  Years: {wpp_raw.index.min()}–{wpp_raw.index.max()}")
@@ -284,27 +273,11 @@ cells.append(nbf.v4.new_code_cell("""\
 # Source: National Cancer Registry of India (NCDIR).
 # Methodology: Census Cohort Component Method using Census 2011 as base year,
 # SRS age-specific fertility rates, and Coale-Demeny West model life tables.
-#
-# The NCDIR file uses standard 5-year bands (15-19, 65-69, 70-74).
-# We apply WPP single-age proportions to:
-#   (a) split 15-19  → 15-17 + 18-19
-#   (b) combine 65-69 + 70-74 → 65-74
-# producing the 16-band BANDS list used throughout this notebook.
-
 ncdir_raw = pd.read_excel(NCDIR_XL, sheet_name="Female", header=0)
 ncdir_raw.rename(columns={"Population": "State"}, inplace=True)
 ncdir_raw["Year"] = ncdir_raw["Year"].astype(int)
 
 STATES = sorted(ncdir_raw["State"].unique().tolist())
-
-# ── Apply WPP-based band conversion ──────────────────────────────────────────
-for yr, idx in ncdir_raw.groupby("Year").groups.items():
-    frac_1819 = wpp_split_1519(yr)
-    ncdir_raw.loc[idx, "15-17"] = ncdir_raw.loc[idx, "15-19"] * (1 - frac_1819)
-    ncdir_raw.loc[idx, "18-19"] = ncdir_raw.loc[idx, "15-19"] * frac_1819
-    ncdir_raw.loc[idx, "65-74"] = ncdir_raw.loc[idx, "65-69"] + ncdir_raw.loc[idx, "70-74"]
-
-ncdir_raw = ncdir_raw.drop(columns=["15-19", "65-69", "70-74"])
 
 # India: sum all 37 states
 ncdir_india = ncdir_raw.groupby("Year")[BANDS].sum() / 1e6   # absolute → millions
@@ -329,34 +302,28 @@ NAME_FIX = {
 }
 cen_raw["State"] = cen_raw["State"].replace(NAME_FIX)
 
-# Census 5-year bands → NCDIR band mapping
-# Note: 15-19 and 65-69/70-74 require special handling (see below)
+# Census 5-year bands → NCDIR band mapping (direct: same standard bands)
+# Only 75-79 and 80+ need combining into 75+
 CEN_TO_NCDIR = {
-    "0-4":"00-04",  "00-04":"00-04",
-    "5-9":"05-09",  "05-09":"05-09",
+    "0-4":"00-04",   "00-04":"00-04",
+    "5-9":"05-09",   "05-09":"05-09",
     "10-14":"10-14",
-    # 15-19 handled separately via WPP split
+    "15-19":"15-19",
     "20-24":"20-24", "25-29":"25-29", "30-34":"30-34", "35-39":"35-39",
     "40-44":"40-44", "45-49":"45-49", "50-54":"50-54", "55-59":"55-59",
-    "60-64":"60-64",
-    "65-69":"65-74", "70-74":"65-74",   # combine into NCDIR 65-74 band
+    "60-64":"60-64", "65-69":"65-69", "70-74":"70-74",
     "75-79":"75+",   "80+":"75+",
 }
 
-def build_state_census(df_state, year):
+def build_state_census(df_state):
     \"\"\"Aggregate census rows for one state-year into NCDIR-band dict.\"\"\"
     out = {b: 0.0 for b in BANDS}
-    frac_1819 = wpp_split_1519(year)
     for _, row in df_state.iterrows():
-        ag  = str(row.get("AgeGroup", "")).strip()
-        val = float(row.get("TotalFemales", 0) or 0)
-        if ag in ("15-19", "15 - 19"):
-            out["15-17"] += val * (1 - frac_1819)
-            out["18-19"] += val * frac_1819
-        else:
-            ncdir_b = CEN_TO_NCDIR.get(ag)
-            if ncdir_b:
-                out[ncdir_b] += val
+        ag     = str(row.get("AgeGroup", "")).strip()
+        val    = float(row.get("TotalFemales", 0) or 0)
+        ncdir_b = CEN_TO_NCDIR.get(ag)
+        if ncdir_b:
+            out[ncdir_b] += val
     return out
 
 # Build census_bands[state][year][band] in ABSOLUTE values
@@ -364,13 +331,13 @@ census_bands = {}
 for (state, year), grp in cen_raw.groupby(["State", "Year"]):
     if "India" in str(state):
         continue
-    census_bands.setdefault(state, {})[year] = build_state_census(grp, year)
+    census_bands.setdefault(state, {})[year] = build_state_census(grp)
 
 # India rows
 census_bands["India"] = {}
 for yr, lbl in [(1991, "India (Excluding J&K)"), (2001, "India"), (2011, "India")]:
     grp = cen_raw[(cen_raw["State"] == lbl) & (cen_raw["Year"] == yr)]
-    census_bands["India"][yr] = build_state_census(grp, yr)
+    census_bands["India"][yr] = build_state_census(grp)
 
 print(f"Census bands loaded for {len([s for s in census_bands if s != 'India'])} states + India")
 print(f"Sample — India 2011 total: {sum(census_bands['India'][2011].values())/1e6:.2f} M")
@@ -854,11 +821,11 @@ cells.append(nbf.v4.new_code_cell("""\
 fig, ax = plt.subplots(figsize=(12, 5))
 HIGHLIGHT_BANDS = {
     "00-04": ("#e41a1c", "0-4 (children)"),
-    "18-19": ("#377eb8", "18-19"),
+    "15-19": ("#377eb8", "15-19"),
     "20-24": ("#4daf4a", "20-24"),
     "25-29": ("#984ea3", "25-29"),
     "40-44": ("#ff7f00", "40-44"),
-    "65-74": ("#a65628", "65-74"),
+    "65-69": ("#a65628", "65-69"),
     "75+":   ("#f781bf", "75+"),
 }
 for band, (color, label) in HIGHLIGHT_BANDS.items():
