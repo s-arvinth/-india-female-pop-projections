@@ -259,6 +259,15 @@ for band, ages in BAND_AGES.items():
 # Scaling factors relative to 2036 (ratio = 1.0 at 2036)
 wpp_sf = wpp_bands.div(wpp_bands.loc[2036])
 
+def wpp_split_1519(year):
+    \"\"\"Fraction of the 15-19 population that falls in ages 18-19, per WPP single-age data.\"\"\"
+    yr = min(max(int(year), 1991), 2100)
+    ages = [wpp_raw.loc[yr, f"Age{a}"] for a in range(15, 20)
+            if f"Age{a}" in wpp_raw.columns]
+    if not ages or sum(ages) == 0:
+        return 0.40   # fallback: ~40% of 15-19 are aged 18-19
+    return sum(ages[3:]) / sum(ages)
+
 print("WPP loaded:")
 print(f"  Years: {wpp_raw.index.min()}–{wpp_raw.index.max()}")
 print(f"  Single-age columns: {len([c for c in wpp_raw.columns if c.startswith('Age')])}")
@@ -275,11 +284,27 @@ cells.append(nbf.v4.new_code_cell("""\
 # Source: National Cancer Registry of India (NCDIR).
 # Methodology: Census Cohort Component Method using Census 2011 as base year,
 # SRS age-specific fertility rates, and Coale-Demeny West model life tables.
+#
+# The NCDIR file uses standard 5-year bands (15-19, 65-69, 70-74).
+# We apply WPP single-age proportions to:
+#   (a) split 15-19  → 15-17 + 18-19
+#   (b) combine 65-69 + 70-74 → 65-74
+# producing the 16-band BANDS list used throughout this notebook.
+
 ncdir_raw = pd.read_excel(NCDIR_XL, sheet_name="Female", header=0)
 ncdir_raw.rename(columns={"Population": "State"}, inplace=True)
 ncdir_raw["Year"] = ncdir_raw["Year"].astype(int)
 
 STATES = sorted(ncdir_raw["State"].unique().tolist())
+
+# ── Apply WPP-based band conversion ──────────────────────────────────────────
+for yr, idx in ncdir_raw.groupby("Year").groups.items():
+    frac_1819 = wpp_split_1519(yr)
+    ncdir_raw.loc[idx, "15-17"] = ncdir_raw.loc[idx, "15-19"] * (1 - frac_1819)
+    ncdir_raw.loc[idx, "18-19"] = ncdir_raw.loc[idx, "15-19"] * frac_1819
+    ncdir_raw.loc[idx, "65-74"] = ncdir_raw.loc[idx, "65-69"] + ncdir_raw.loc[idx, "70-74"]
+
+ncdir_raw = ncdir_raw.drop(columns=["15-19", "65-69", "70-74"])
 
 # India: sum all 37 states
 ncdir_india = ncdir_raw.groupby("Year")[BANDS].sum() / 1e6   # absolute → millions
@@ -317,15 +342,6 @@ CEN_TO_NCDIR = {
     "65-69":"65-74", "70-74":"65-74",   # combine into NCDIR 65-74 band
     "75-79":"75+",   "80+":"75+",
 }
-
-def wpp_split_1519(year):
-    \"\"\"Fraction of 15-19 population in ages 18-19, from WPP single-age data.\"\"\"
-    yr = min(max(int(year), 1991), 2100)
-    ages = [wpp_raw.loc[yr, f"Age{a}"] for a in range(15, 20)
-            if f"Age{a}" in wpp_raw.columns]
-    if not ages or sum(ages) == 0:
-        return 0.40   # fallback: ~40% of 15-19 are aged 18-19
-    return sum(ages[3:]) / sum(ages)
 
 def build_state_census(df_state, year):
     \"\"\"Aggregate census rows for one state-year into NCDIR-band dict.\"\"\"
@@ -616,12 +632,17 @@ for state in STATES:
             p_mom = ser[yr-1][band] * (1 + r_state[state][band])
             p_b   = ncdir_states[state].loc[2036, band] * b_scale[band][yr]
             ser[yr][band] = (1 - alpha) * p_mom + alpha * p_b
+    # Continuity scale per band at the 2046 handoff
+    cont_scale = {}
     for band in BANDS:
         v_blend_2046 = ser[2046][band]
         v_b_2046     = ncdir_states[state].loc[2036, band] * b_scale[band][2046]
-        sc           = v_blend_2046 / v_b_2046 if v_b_2046 > 0 else 1.0
-        for yr in range(2047, 2101):
-            ser[yr][band] = ncdir_states[state].loc[2036, band] * b_scale[band][yr] * sc
+        cont_scale[band] = v_blend_2046 / v_b_2046 if v_b_2046 > 0 else 1.0
+    # Fill 2047-2100 (must initialise each year dict before writing bands into it)
+    for yr in range(2047, 2101):
+        ser[yr] = {}
+        for band in BANDS:
+            ser[yr][band] = ncdir_states[state].loc[2036, band] * b_scale[band][yr] * cont_scale[band]
     state_proj[state] = ser
 
 print(f"State projections built for {len(state_proj)} states (2012-2100).")
